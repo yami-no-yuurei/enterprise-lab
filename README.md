@@ -36,7 +36,11 @@ This lab is guided by a few core principles:
 - **Document what actually happened**  
   The changelog reflects real changes, reversions, and outcomes — not idealized designs.
 
+- **Operational issue tracking**  
+  Incidents, outages, and unexpected behavior are documented using Jira ITSM to maintain an ops-oriented workflow alongside the changelog.
+
 ---
+
 
 ## High-Level Architecture
 
