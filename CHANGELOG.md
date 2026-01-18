@@ -1,166 +1,67 @@
-# Changelog — AD Lab Network Stabilization
+# Changelog — Network Topology Expansion & Role Separation
 
 **Date:** 2026-01-17
 
-**Scope:** Cisco SG L3 switch + AD/DHCP/DNS lab network
+**Scope:** Cisco SG L3 switch, TP-Link Archer, AD/DHCP/DNS lab, dual-upstream host placement
 
 **Status:** Applied and verified working
 
-**Impact:** Stabilized inter-VLAN routing, DHCP, DNS, and internet access for AD lab
+**Impact:** Preserved stable AD lab routing and services while introducing a dual-upstream model for performance-critical and internal hosts without altering baseline lab behavior
 
 ---
 
 ## Summary
 
-Reverted experimental VLAN / multi-router topology and restored a **clean Layer-3 AD lab design** using the Cisco SG switch as the L3 core. Removed conflicting routing, DHCP relay, and VRRP configurations that caused nondeterministic behavior. Result is a stable, predictable AD lab with double-NAT internet access.
+The AD lab baseline was preserved without functional changes: 
+- Cisco SG500x continues to operate as the Layer-3 core routing lab VLANs
+- AD Domain Controller remains dual-homed and authoritative for lab DHCP
+- TP-Link Archer remains the DHCP/NAT edge for the internal LAN.
+
+A dual-upstream host model was introduced, placing a headless Alma bastion on the T-Mobile subnet for independent, high-throughput access while keeping a GUI Alma workstation on the internal LAN. 
+
+The desktop, previously connected directly to the T-Mobile gateway, was moved behind the SG500x switch while retaining the same upstream path, centralizing physical connectivity without impacting WAN performance and preserving a stable, predictable AD lab environment.
 
 ---
 
-## Network Design (Post-Change)
+### Baseline
+- Cisco SG500x operating as L3 core for lab VLANs
+- TP-Link Archer providing DHCP + NAT for 192.168.1.0/24
+- AD DC dual-homed via SG500x:
+  - 192.168.1.100 (LAN / management)
+  - 192.168.20.50 (lab services)
+- Lab VLANs (10/20/30/40) routed by SG500x
+- DHCP relay to AD DC for lab subnet
+- DHCP Authority:
+  - Archer is authoritative for 192.168.1.0/24
+  - AD DC is authoritative for lab VLAN subnets:
+    - 192.168.10.0/24
+    - 192.168.20.0/24
+    - 192.168.30.0/24
+    - 192.168.40.0/24
+- Default route from SG500x → TP-Link Archer
 
-### Architecture
+### Added
+- Deployed **two AlmaLinux systems** with distinct roles and upstream connectivity:
+  - **Headless Alma Bastion**
+    - Subnet: 192.168.12.0/24
+    - DHCP from T-Mobile 5G gateway
+    - Co-resident with primary desktop
+    - Access via Tailscale
+  - **GUI Alma Workstation**
+    - Subnet: 192.168.1.0/24
+    - DHCP from TP-Link Archer
+    - Connected to internal LAN via SG500x
 
-* **Cisco SG switch** acts as **Layer-3 core**
-* **SVIs present for VLANs 10 / 20 / 30 / 40**
-* **AD/DHCP/DNS server:** `192.168.1.100`
-* **Default route:** `192.168.1.1` (upstream router)
-* **Double NAT:** lab → upstream router → ISP (acceptable for lab)
+### Changed
+- Introduced dual-upstream network design:
+  - Performance-critical hosts (desktop + bastion) bypass Archer and lab routing
+  - Internal admin and lab-adjacent hosts remain behind Archer NAT
+- Preserved existing lab routing model:
+  - SG500x continues inter-VLAN routing
+  - DHCP relay unchanged for lab VLANs
 
-### VLAN Roles
 
-| VLAN | Name        | Subnet          | Gateway      |
-| ---- | ----------- | --------------- | ------------ |
-| 10   | Server      | 192.168.10.0/24 | 192.168.10.1 |
-| 20   | Workstation | 192.168.20.0/24 | 192.168.20.1 |
-| 30   | Admin       | 192.168.30.0/24 | 192.168.30.1 |
-| 40   | PenTest     | 192.168.40.0/24 | 192.168.40.1 |
-| 1    | Management  | 192.168.1.0/24  | 192.168.1.1  |
-
----
-
-## Changes Made
-
-### 1. Removed Conflicting / Experimental Configuration
-
-* Reverted all partially implemented:
-
-  * Transit VLANs
-  * VRRP configuration
-  * Bastion / VLAN100 routing experiments
-* Returned to a **single, consistent routing model**
-
----
-
-### 2. Standardized Switch as the Only L3 Gateway for Lab VLANs
-
-* Confirmed **SVIs exist only on the switch** for:
-
-  * VLAN 10
-  * VLAN 20
-  * VLAN 30
-  * VLAN 40
-* Ensured **exactly one default gateway per VLAN**
-* Normalized gateway IPs to `.1` where applicable
-
----
-
-### 3. Cleaned Up DHCP Relay Configuration
-
-**Before:**
-
-* Multiple `ip helper-address` statements
-* Per-VLAN relay mixed with global relay
-* Self-referencing relay entries
-
-**After:**
-
-* Single DHCP relay target:
-
-  * `192.168.1.100` (AD/DHCP/DNS server)
-* DHCP relay enabled **only where needed**
-* Removed all redundant and conflicting helper entries
-
-Result:
-
-* Predictable DHCP behavior
-* Correct gateway and DNS assignment
-* No cross-VLAN leakage
-
----
-
-### 4. Verified and Corrected Trunk Configuration
-
-* Explicitly set trunk mode on uplink:
-
-  * `gi1/1/1` trunks VLANs 10/20/30/40
-* Ensured access ports are explicitly assigned to correct VLANs
-* Eliminated ambiguous port modes
-
----
-
-### 5. Verified Routing and Internet Access
-
-* Switch routing table shows:
-
-  * Connected routes for VLANs 10/20/30/40
-  * Default route → `192.168.1.1`
-* Hosts in all lab VLANs:
-
-  * Obtain DHCP leases
-  * Resolve DNS via AD
-  * Reach internet successfully
-
----
-
-## Validation Tests Performed
-
-### From VLAN 20 Host
-
-* `ping 192.168.20.1` 
-* `ping 192.168.1.100` 
-* `ping 1.1.1.1` 
-* `nslookup google.com` 
-
-### AD Functionality
-
-* DHCP scopes issuing correct:
-
-  * Gateway
-  * DNS
-  * Domain options
-* No intermittent authentication or name resolution issues observed
-
----
-
-## Known Limitations (Accepted)
-
-* **Double NAT** remains in place (lab → router → ISP)
-* No bastion or VLAN100 separation at this stage
-* ISP router limitations unchanged
-
-These are acceptable and intentional for the current lab scope.
-
----
-
-## Next Planned Changes (Not Yet Applied)
-
-* Reintroduce **VLAN 100 (home / ISP LAN)** as L2 only
-* Add **bastion VLAN** with tightly scoped access to:
-
-  * Desktop
-  * Internet
-* Enforce access control via switch ACLs or downstream router rules
-* Maintain current AD lab baseline unchanged during expansion
-
----
-
-## Rollback Plan
-
-If issues arise:
-1. Restore saved running-config from this baseline
-2. Verify:
-
-   * SVIs
-   * DHCP relay target
-   * Default route
-3. Confirm AD/DHCP/DNS server availability
+### Notes
+- Bastion is intentionally unreachable from LAN; access provided via overlay networking
+- Physical path separation favored over logical segmentation to reduce complexity
+- AD lab baseline restored and validated prior to applying changes
