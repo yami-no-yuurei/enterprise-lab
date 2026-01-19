@@ -12,6 +12,8 @@ The primary goals of this project are:
 
 This is **not** a single-purpose demo or a frozen “perfect” design. It is a living lab.
 
+![Current Network Diagram](/network-20261701.png)
+
 ---
 
 ## Design Philosophy
